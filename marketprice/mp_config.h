@@ -50,6 +50,8 @@ struct settings {
     int                 hour_max;
     double              cache_timeout;
     char                *accesshttp;
+
+    bool                daemon;
 };
 
 extern struct settings settings;

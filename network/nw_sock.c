@@ -10,6 +10,7 @@
 # include <fcntl.h>
 # include <netdb.h>
 # include <unistd.h>
+# include <sys/socket.h>
 
 # include "nw_sock.h"
 
@@ -126,20 +127,34 @@ int nw_sock_host_addr(int sockfd, nw_addr_t *addr)
 
 static int nw_sock_addr_fill_inet(nw_addr_t *addr, const char *host, const char *port)
 {
+    printf("nw_sock_addr_fill_inet: %s:%s\n", host, port);
+
+    struct hostent *host_info;
+    if ((host_info = gethostbyname(host)) == NULL) {
+        return -__LINE__;
+    }
+
+    char** p_addr = host_info->h_addr_list;
+    if (p_addr == NULL || p_addr[0] == NULL) {
+        return -__LINE__;
+    }
+
     memset(addr, 0, sizeof(nw_addr_t));
-    if (strchr(host, '.') != NULL) {
+    if (host_info->h_addrtype == AF_INET) {
         addr->in.sin_family = AF_INET;
-        if (inet_pton(addr->in.sin_family, host, &addr->in.sin_addr) <= 0) {
-            return -1;
-        }
+        memcpy(&addr->in.sin_addr, p_addr[0], sizeof(struct in_addr));
+//        if (inet_pton(addr->in.sin_family, host, &addr->in.sin_addr) <= 0) {
+//            return -1;
+//        }
         addr->in.sin_port = htons(strtoul(port, NULL, 0));
         addr->family = addr->in.sin_family;
         addr->addrlen = sizeof(addr->in);
     } else {
         addr->in6.sin6_family = AF_INET6;
-        if (inet_pton(addr->in6.sin6_family, host, &addr->in6.sin6_addr) <= 0) {
-            return -1;
-        }
+        memcpy(&addr->in6.sin6_addr, p_addr[0], sizeof(struct in6_addr));
+//        if (inet_pton(addr->in6.sin6_family, host, &addr->in6.sin6_addr) <= 0) {
+//            return -1;
+//        }
         addr->in6.sin6_port = htons(strtoul(port, NULL, 0));
         addr->family = addr->in6.sin6_family;
         addr->addrlen = sizeof(addr->in6);

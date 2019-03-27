@@ -81,6 +81,8 @@ struct settings {
 
     depth_limit_cfg     depth_limit;
     depth_merge_cfg     depth_merge;
+
+    bool                daemon;
 };
 
 extern struct settings settings;

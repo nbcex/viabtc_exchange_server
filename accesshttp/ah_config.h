@@ -50,6 +50,7 @@ struct settings {
     rpc_clt_cfg         readhistory;
     double              timeout;
     int                 worker_num;
+    bool                daemon;
 };
 
 extern struct settings settings;

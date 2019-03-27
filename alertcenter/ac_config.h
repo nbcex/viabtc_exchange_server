@@ -30,6 +30,7 @@ struct settings {
     log_cfg             log;
     nw_svr_cfg          svr;
     redis_sentinel_cfg  redis;
+    bool                daemon;
 };
 
 extern struct settings settings;

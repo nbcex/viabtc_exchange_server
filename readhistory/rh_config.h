@@ -48,6 +48,8 @@ struct settings {
     rpc_svr_cfg         svr;
     mysql_cfg           db_history;
     int                 worker_num;
+
+    bool                daemon;
 };
 
 extern struct settings settings;

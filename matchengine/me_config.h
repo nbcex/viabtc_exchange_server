@@ -85,6 +85,8 @@ struct settings {
     int                 slice_keeptime;
     int                 history_thread;
     double              cache_timeout;
+
+    bool                daemon;
 };
 
 extern struct settings settings;

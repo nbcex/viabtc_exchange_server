@@ -10,6 +10,11 @@ struct settings settings;
 static int read_config_from_json(json_t *root)
 {
     int ret;
+    ret = read_cfg_bool(root, "daemon", &settings.daemon, false, true);
+    if (ret < 0) {
+        printf("read daemon config fail: %d\n", ret);
+        return -__LINE__;
+    }
     ret = read_cfg_bool(root, "debug", &settings.debug, false, false);
     if (ret < 0) {
         printf("read debug config fail: %d\n", ret);

@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
     }
 
     process_title_set("%s_listener", __process__);
-    daemon(1, 1);
+    if (settings.daemon == true) daemon(1, 1);
     process_keepalive();
 
     ret = init_listener();

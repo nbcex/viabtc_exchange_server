@@ -6,23 +6,43 @@
 # include "ut_config.h"
 # include "ut_misc.h"
 
+# include <netdb.h>
+# include <sys/socket.h>
+
 int parse_inetv4_addr(const char *str, struct sockaddr_in *addr)
 {
     char *tmp = strdup(str);
-    char *ip = strtok(tmp, ": \t");
-    if (ip == NULL) {
+    char *hostname = strtok(tmp, ": \t");
+    if (hostname == NULL) {
         return -__LINE__;
     }
     char *port = strtok(NULL, ": \t");
     if (port == NULL) {
         return -__LINE__;
     }
+
+    printf("parse_inetv4_addr: %s:%s\n", hostname, port);
+
     memset(addr, 0, sizeof(struct sockaddr_in));
     addr->sin_family = AF_INET;
     addr->sin_port = htons((uint16_t)atoi(port));
-    if (inet_aton(ip, &addr->sin_addr) == 0) {
+
+    struct hostent *host_info;
+    if ((host_info = gethostbyname(hostname)) == NULL) {
         return -__LINE__;
     }
+
+    char** p_addr = host_info->h_addr_list;
+    if (p_addr == NULL || p_addr[0] == NULL) {
+        return -__LINE__;
+    }
+
+    memcpy(&addr->sin_addr, p_addr[0], sizeof(struct in_addr));
+
+//    if (inet_aton(ip, &addr->sin_addr) == 0) {
+//        return -__LINE__;
+//    }
+
     free(tmp);
 
     return 0;

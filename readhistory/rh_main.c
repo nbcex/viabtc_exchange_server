@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
         error(EXIT_FAILURE, errno, "init log fail: %d", ret);
     }
 
-    daemon(1, 1);
+    if (settings.daemon == true) daemon(1, 1);
     process_keepalive();
 
     ret = init_server();
