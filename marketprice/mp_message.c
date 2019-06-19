@@ -8,7 +8,7 @@
 # include "mp_config.h"
 # include "mp_message.h"
 # include "mp_kline.h"
-
+#include <unistd.h>
 struct market_info {
     char   *name;
     mpd_t  *last;
@@ -879,10 +879,25 @@ int init_message(void)
     redis = redis_sentinel_create(&settings.redis);
     if (redis == NULL)
         return -__LINE__;
-    ret = init_market();
-    if (ret < 0) {
-        return ret;
-    }
+
+	{
+		int max_tries = 10;
+        for (int i = 0; i < max_tries; i++) {
+            ret = init_market();
+            if (ret >= 0) {
+                break;
+            }
+
+            fprintf(stderr, "init_market fail %d\n", ret);
+
+            if (i == max_tries - 1) {
+    			return ret;
+            }
+
+            sleep(3);
+        }
+	}
+
     last_offset = get_message_offset();
     if (last_offset < 0) {
         return -__LINE__;

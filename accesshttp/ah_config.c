@@ -4,7 +4,7 @@
  */
 
 # include "ah_config.h"
-
+#include <unistd.h>
 struct settings settings;
 
 static int read_config_from_json(json_t *root)
@@ -45,11 +45,25 @@ static int read_config_from_json(json_t *root)
         printf("load matchengine clt config fail: %d\n", ret);
         return -__LINE__;
     }
-    ret = load_cfg_rpc_clt(root, "marketprice", &settings.marketprice);
-    if (ret < 0) {
-        printf("load marketprice clt config fail: %d\n", ret);
-        return -__LINE__;
+
+	{
+    	int max_tries = 9;
+        for (int i = 0; i < max_tries; i++) {
+            ret = load_cfg_rpc_clt(root, "marketprice", &settings.marketprice);
+            if (ret >= 0) {
+    			break;
+            }
+
+            fprintf(stderr, "load marketprice clt config fail: %d\n", ret);
+
+    		if (i == max_tries - 1) {
+    			return -__LINE__;
+    		}
+
+            sleep(3);
+        }
     }
+
     ret = load_cfg_rpc_clt(root, "readhistory", &settings.readhistory);
     if (ret < 0) {
         printf("load readhistory clt config fail: %d\n", ret);
