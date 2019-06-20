@@ -263,9 +263,12 @@ static int on_cmd_market_deals(MYSQL *conn, json_t *params, struct job_reply *rs
         rsp->message = sdsnew("internal error");
     }
 
+	uint32_t count = get_market_user_deals_count(conn, user_id, market);
+
     json_t *result = json_object();
     json_object_set_new(result, "offset", json_integer(offset));
     json_object_set_new(result, "limit", json_integer(limit));
+    json_object_set_new(result, "total", json_integer(count));
     json_object_set_new(result, "records", records);
     rsp->result = result;
 

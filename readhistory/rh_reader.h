@@ -15,6 +15,7 @@ json_t *get_user_order_finished(MYSQL *conn, uint32_t user_id,
 json_t *get_order_deal_details(MYSQL *conn, uint64_t order_id, size_t offset, size_t limit);
 json_t *get_finished_order_detail(MYSQL *conn, uint64_t order_id);
 json_t *get_market_user_deals(MYSQL *conn, uint32_t user_id, const char *market, size_t offset, size_t limit);
+uint32_t get_market_user_deals_count(MYSQL *conn, uint32_t user_id, const char *market);
 
 # endif
 

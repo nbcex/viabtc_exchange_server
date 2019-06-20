@@ -250,6 +250,40 @@ json_t *get_finished_order_detail(MYSQL *conn, uint64_t order_id)
     return detail;
 }
 
+uint32_t get_market_user_deals_count(MYSQL *conn, uint32_t user_id, const char *market) {
+    size_t market_len = strlen(market);
+    char _market[2 * market_len + 1];
+    mysql_real_escape_string(conn, _market, market, market_len);
+
+    sds sql = sdsempty();
+    sql = sdscatprintf(sql, "SELECT count(*) FROM `user_deal_history_%u` where `user_id` = %u AND `market` = '%s'",
+        user_id % HISTORY_HASH_NUM, user_id, _market);
+
+    log_trace("exec sql: %s", sql);
+    int ret = mysql_real_query(conn, sql, sdslen(sql));
+    if (ret != 0) {
+        log_fatal("exec sql: %s fail: %d %s", sql, mysql_errno(conn), mysql_error(conn));
+        sdsfree(sql);
+        return 0;
+    }
+    sdsfree(sql);
+
+    MYSQL_RES *result = mysql_store_result(conn);
+    size_t num_rows = mysql_num_rows(result);
+	if (num_rows != 1) {
+		log_fatal("mysql_num_rows fail: %zu", num_rows);
+		mysql_free_result(result);
+		return 0;
+	}
+
+	MYSQL_ROW row = mysql_fetch_row(result);
+	uint32_t count = strtoul(row[0], NULL, 0);
+
+	mysql_free_result(result);
+	
+	return count;
+}
+
 json_t *get_market_user_deals(MYSQL *conn, uint32_t user_id, const char *market, size_t offset, size_t limit)
 {
     size_t market_len = strlen(market);
