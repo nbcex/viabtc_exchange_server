@@ -1,4 +1,4 @@
-all: apt hiredis curl rdkafka
+all: hiredis curl rdkafka
 apt:
 	sudo apt-get update && sudo apt-get install -y libev-dev libssl-dev libmpdec-dev libjansson-dev  libmysqlclient-dev liblz4-dev
 curl:
