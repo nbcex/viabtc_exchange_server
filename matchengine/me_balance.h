@@ -10,6 +10,7 @@
 
 # define BALANCE_TYPE_AVAILABLE 1
 # define BALANCE_TYPE_FREEZE    2
+# define BALANCE_TYPE_MANUAL_FREEZE    3
 
 extern dict_t *dict_balance;
 
@@ -24,6 +25,7 @@ int init_balance(void);
 bool asset_exist(const char *asset);
 int asset_prec(const char *asset);
 int asset_prec_show(const char *asset);
+int balance_part(const char *part);
 
 mpd_t *balance_get(uint32_t user_id, uint32_t type, const char *asset);
 void   balance_del(uint32_t user_id, uint32_t type, const char *asset);
@@ -32,9 +34,11 @@ mpd_t *balance_add(uint32_t user_id, uint32_t type, const char *asset, mpd_t *am
 mpd_t *balance_sub(uint32_t user_id, uint32_t type, const char *asset, mpd_t *amount);
 mpd_t *balance_freeze(uint32_t user_id, const char *asset, mpd_t *amount);
 mpd_t *balance_unfreeze(uint32_t user_id, const char *asset, mpd_t *amount);
+mpd_t *balance_manual_freeze(uint32_t user_id, const char *asset, mpd_t *amount);
+mpd_t *balance_manual_unfreeze(uint32_t user_id, const char *asset, mpd_t *amount);
 
 mpd_t *balance_total(uint32_t user_id, const char *asset);
-int balance_status(const char *asset, mpd_t *total, size_t *available_count, mpd_t *available, size_t *freeze_count, mpd_t *freeze);
+int balance_status(const char *asset, mpd_t *total, size_t *available_count, mpd_t *available, size_t *freeze_count, mpd_t *freeze, size_t *manual_freeze_count, mpd_t *manual_freeze);
 
 # endif
 

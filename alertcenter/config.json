@@ -1,4 +1,5 @@
 {
+    "daemon": false,
     "process": {
         "file_limit": 1000000,
         "core_limit": 1000000000
@@ -17,9 +18,7 @@
     "redis": {
         "name": "mymaster",
         "addr": [
-            "127.0.0.1:26381",
-            "127.0.0.1:26382",
-            "127.0.0.1:26383"
+            "redis-sentinel:26379"
         ]
     }
 }

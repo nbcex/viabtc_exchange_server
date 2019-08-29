@@ -1,5 +1,6 @@
 {
     "debug": true,
+    "daemon": false,
     "process": {
         "file_limit": 1000000,
         "core_limit": 1000000000
@@ -11,7 +12,7 @@
     },
     "alert": {
         "host": "matchengine",
-        "addr": "127.0.0.1:4444"
+        "addr": "alertcenter:4444"
     },
     "svr": {
         "bind": [
@@ -22,135 +23,76 @@
         "max_pkg_size": 10240,
         "heartbeat_check": false
     },
-    "cli": "tcp@127.0.0.1:7317",
+    "cli": "tcp@matchengine:7317",
     "db_log": {
-        "host": "localhost",
-        "user": "user",
-        "pass": "pass",
+        "host": "mysql",
+        "user": "root",
+        "pass": "Jiulian666",
         "name": "trade_log"
     },
     "db_history": {
-        "host": "localhost",
-        "user": "user",
-        "pass": "pass",
+        "host": "mysql",
+        "user": "root",
+        "pass": "Jiulian666",
         "name": "trade_history"
     },
     "assets": [
         {
-            "name": "BCH",
+            "name": "USDT",
             "prec_save": 20,
-            "prec_show": 8
-        }, {
-            "name": "BTC",
-            "prec_save": 12,
-            "prec_show": 8
-        }, {
-            "name": "LTC",
-            "prec_save": 12,
             "prec_show": 8
         }, {
             "name": "ETH",
             "prec_save": 12,
             "prec_show": 8
         }, {
-            "name": "ETC",
+            "name": "BTC",
             "prec_save": 12,
             "prec_show": 8
         }, {
-            "name": "ZEC",
-            "prec_save": 12,
-            "prec_show": 8
-        }, {
-            "name": "XMR",
-            "prec_save": 12,
-            "prec_show": 8
-        }, {
-            "name": "DSH",
+            "name": "COCO",
             "prec_save": 12,
             "prec_show": 8
         }
     ],
     "markets": [
         {
-            "name": "BTCBCH",
-            "stock": {
-                "name": "BTC",
-                "prec": 8
-            },
-            "money": {
-                "name": "BCH",
-                "prec": 8
-            },
-            "min_amount": "0.001"
-        }, {
-            "name": "LTCBCH",
-            "stock": {
-                "name": "LTC",
-                "prec": 8
-            },
-            "money": {
-                "name": "BCH",
-                "prec": 8
-            },
-            "min_amount": "0.001"
-        }, {
-            "name": "ETHBCH",
+            "name": "ETHUSDT",
             "stock": {
                 "name": "ETH",
                 "prec": 8
             },
             "money": {
-                "name": "BCH",
+                "name": "USDT",
                 "prec": 8
             },
             "min_amount": "0.001"
         }, {
-            "name": "ETCBCH",
+            "name": "BTCUSDT",
             "stock": {
-                "name": "ETC",
+                "name": "BTC",
                 "prec": 8
             },
             "money": {
-                "name": "BCH",
+                "name": "USDT",
                 "prec": 8
             },
             "min_amount": "0.001"
         }, {
-            "name": "ZECBCH",
+            "name": "COCOUSDT",
             "stock": {
-                "name": "ZEC",
+                "name": "COCO",
                 "prec": 8
             },
             "money": {
-                "name": "BCH",
-                "prec": 8
-            },
-            "min_amount": "0.001"
-        }, {
-            "name": "XMRBCH",
-            "stock": {
-                "name": "XMR",
-                "prec": 8
-            },
-            "money": {
-                "name": "BCH",
-                "prec": 8
-            },
-            "min_amount": "0.001"
-        }, {
-            "name": "DSHBCH",
-            "stock": {
-                "name": "DSH",
-                "prec": 8
-            },
-            "money": {
-                "name": "BCH",
+                "name": "USDT",
                 "prec": 8
             },
             "min_amount": "0.001"
         }
     ],
-    "brokers": "127.0.0.1:9092",
+    "brokers": "kafka:9092",
     "slice_interval": 3600,
+    "history_thread":100,
     "slice_keeptime": 259200 
 }

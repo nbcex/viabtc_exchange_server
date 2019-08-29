@@ -298,13 +298,15 @@ int state_send_last(nw_ses *ses, const char *market)
     struct market_val *obj = entry->val;
     if (obj->last == NULL)
         return 0;
+    
+    return obj->last;
 
-    json_t *params = json_array();
-    json_array_append_new(params, json_string(market));
-    json_array_append(params, obj->last);
-    send_notify(ses, "state.update", params);
-    json_decref(params);
+    //json_t *params = json_array();
+    //json_array_append_new(params, json_string(market));
+    //json_array_append(params, obj->last);
+    //send_notify(ses, "state.update", params);
+    //json_decref(params);
 
-    return 0;
+    //return 0;
 }
 

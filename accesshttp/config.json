@@ -1,5 +1,6 @@
 {
     "debug": true,
+    "daemon": false,
     "process": {
         "file_limit": 1000000,
         "core_limit": 1000000000
@@ -11,7 +12,7 @@
     },
     "alert": {
         "host": "accesshttp",
-        "addr": "127.0.0.1:4444"
+        "addr": "alertcenter:4444"
     },
     "svr": {
         "bind": [
@@ -28,21 +29,21 @@
     "matchengine": {
         "name": "matchengine",
         "addr": [
-            "tcp@127.0.0.1:7316"
+            "tcp@matchengine:7316"
         ],
         "max_pkg_size": 2000000
     },
     "marketprice": {
         "name": "marketprice",
         "addr": [
-            "tcp@127.0.0.1:7416"
+            "tcp@marketprice:7416"
         ],
         "max_pkg_size": 2000000
     },
     "readhistory": {
         "name": "readhistory",
         "addr": [
-            "tcp@127.0.0.1:7424"
+            "tcp@readhistory:7424"
         ],
         "max_pkg_size": 2000000
     }

@@ -1,5 +1,6 @@
 {
     "debug": true,
+    "daemon": false,
     "process": {
         "file_limit": 1000000,
         "core_limit": 1000000000
@@ -11,11 +12,11 @@
     },
     "alert": {
         "host": "accessws",
-        "addr": "127.0.0.1:4444"
+        "addr": "alertcenter:4444"
     },
     "svr": {
         "bind": [
-            "stream@/tmp/accessws.sock"
+            "tcp@0.0.0.0:8092"
         ],
         "max_pkg_size": 102400,
         "protocol": "chat"
@@ -29,36 +30,36 @@
     "matchengine": {
         "name": "matchengine",
         "addr": [
-            "tcp@127.0.0.1:7316"
+            "tcp@matchengine:7316"
         ],
         "max_pkg_size": 2000000
     },
     "marketprice": {
         "name": "marketprice",
         "addr": [
-            "tcp@127.0.0.1:7416"
+            "tcp@marketprice:7416"
         ],
         "max_pkg_size": 2000000
     },
     "readhistory": {
         "name": "readhistory",
         "addr": [
-            "tcp@127.0.0.1:7424"
+            "tcp@readhistory:7424"
         ],
         "max_pkg_size": 2000000
     },
     "deals": {
-        "brokers": "127.0.0.1:9092",
+        "brokers": "kafka:9092",
         "topic": "deals",
         "partition": 0
     },
     "orders": {
-        "brokers": "127.0.0.1:9092",
+        "brokers": "kafka:9092",
         "topic": "orders",
         "partition": 0
     },
     "balances": {
-        "brokers": "127.0.0.1:9092",
+        "brokers": "kafka:9092",
         "topic": "balances",
         "partition": 0
     },

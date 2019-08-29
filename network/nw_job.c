@@ -4,6 +4,7 @@
  */
 
 # include <stdlib.h>
+# include <stdio.h>
 # include <unistd.h>
 # include <assert.h>
 
@@ -109,10 +110,14 @@ static void nw_job_free(nw_job *job)
 
 nw_job *nw_job_create(nw_job_type *type, int thread_count)
 {
-    if (!type->on_job)
+    if (!type->on_job) {
+        printf("Undefine on_job.\n");
         return NULL;
-    if (type->on_init && !type->on_release)
+    }
+    if (type->on_init && !type->on_release) {
+        printf("Undefine on_init, on_release.\n");
         return NULL;
+    }
 
     nw_job *job = malloc(sizeof(nw_job));
     if (job == NULL)
@@ -123,26 +128,31 @@ nw_job *nw_job_create(nw_job_type *type, int thread_count)
     job->loop = nw_default_loop;
     if (pthread_mutex_init(&job->lock, NULL) != 0) {
         free(job);
+        printf("pthread_mutex_init fail.\n");
         return NULL;
     }
     if (pthread_cond_init(&job->notify, NULL) != 0) {
         pthread_mutex_destroy(&job->lock);
         free(job);
+        printf("pthread_cond_init fail.\n");
         return NULL;
     }
     job->thread_count = thread_count;
     job->threads = calloc(job->thread_count, sizeof(pthread_t));
     if (job->threads == NULL) {
         nw_job_free(job);
+        printf("calloc fail.\n");
         return NULL;
     }
     job->cache = nw_cache_create(sizeof(nw_job_entry));
     if (job->cache == NULL) {
         nw_job_free(job);
+        printf("nw_cache_create fail.\n");
         return NULL;
     }
     if (pipe(job->pipefd) != 0) {
         nw_job_free(job);
+        printf("pipe fail.\n");
         return NULL;
     }
     nw_sock_set_nonblock(job->pipefd[0]);
@@ -162,11 +172,13 @@ nw_job *nw_job_create(nw_job_type *type, int thread_count)
             arg->privdata = job->type.on_init();
             if (arg->privdata == NULL) {
                 nw_job_release(job);
+                printf("type.on_init fail.\n");
                 return NULL;
             }
         }
         if (pthread_create(&job->threads[i], NULL, thread_routine, arg) != 0) {
             nw_job_release(job);
+            printf("pthread_create fail.\n");
             return NULL;
         }
         job->thread_start++;

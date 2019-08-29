@@ -7,6 +7,61 @@
 # include "rh_reader.h"
 # include "ut_decimal.h"
 
+//for page, query count of entry
+json_t *get_user_balance_history_count(MYSQL *conn, uint32_t user_id,
+        const char *asset, const char *business, uint64_t start_time, uint64_t end_time)
+{
+    sds sql = sdsempty();
+    sql = sdscatprintf(sql, "SELECT count(*) FROM `balance_history_%u` WHERE `user_id` = %u",
+            user_id % HISTORY_HASH_NUM, user_id);
+
+    size_t asset_len = strlen(asset);
+    if (asset_len > 0) {
+        char _asset[2 * asset_len + 1];
+        mysql_real_escape_string(conn, _asset, asset, strlen(asset));
+        sql = sdscatprintf(sql, " AND `asset` = '%s'", _asset);
+    }
+    size_t business_len = strlen(business);
+    if (business_len > 0) {
+        char _business[2 * business_len + 1];
+        mysql_real_escape_string(conn, _business, business, strlen(business));
+        sql = sdscatprintf(sql, " AND `business` = '%s'", _business);
+    }
+
+    if (start_time) {
+        sql = sdscatprintf(sql, " AND `time` >= %"PRIu64, start_time);
+    }
+    if (end_time) {
+        sql = sdscatprintf(sql, " AND `time` < %"PRIu64, end_time);
+    }
+
+    sql = sdscatprintf(sql, " ORDER BY `id` DESC");
+
+    log_trace("exec sql: %s", sql);
+    int ret = mysql_real_query(conn, sql, sdslen(sql));
+    if (ret != 0) {
+        log_fatal("exec sql: %s fail: %d %s", sql, mysql_errno(conn), mysql_error(conn));
+        sdsfree(sql);
+        return NULL;
+    }
+    sdsfree(sql);
+
+	//fetch count
+	MYSQL_RES *result = mysql_store_result(conn);
+    size_t num_rows = mysql_num_rows(result);
+	json_t *count_obj = json_object();
+    for (size_t i = 0; i < num_rows; ++i) {
+        MYSQL_ROW row = mysql_fetch_row(result);
+		uint64_t count = strtoull(row[0], NULL, 0);
+		json_object_set_new(count_obj, "count", json_integer(count));
+		break;
+    }
+
+    mysql_free_result(result);
+
+    return count_obj;
+}
+
 json_t *get_user_balance_history(MYSQL *conn, uint32_t user_id,
         const char *asset, const char *business, uint64_t start_time, uint64_t end_time, size_t offset, size_t limit)
 {

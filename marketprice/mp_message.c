@@ -8,7 +8,7 @@
 # include "mp_config.h"
 # include "mp_message.h"
 # include "mp_kline.h"
-#include <unistd.h>
+
 struct market_info {
     char   *name;
     mpd_t  *last;
@@ -677,6 +677,30 @@ static int flush_offset(redisContext *context, int64_t offset)
     return 0;
 }
 
+static int flush_last_done(redisContext *context, time_t timestamp)
+{
+    if (timestamp == 0)
+        return 0;
+
+    static int first = 0;
+    if (first == 0) {
+        redisReply *reply = redisCmd(context, "SETNX k:firstdone %ld", timestamp);
+        if (reply == NULL) {
+            return -__LINE__;
+        }
+        first = 1;
+        freeReplyObject(reply);
+    }
+
+    redisReply *reply = redisCmd(context, "SET k:lastdone %ld", timestamp);
+    if (reply == NULL) {
+        return -__LINE__;
+    }
+    freeReplyObject(reply);
+
+    return 0;
+}
+
 static int flush_last(redisContext *context, const char *market, mpd_t *last)
 {
     char *last_str = mpd_to_sci(last, 0);
@@ -692,7 +716,7 @@ static int flush_last(redisContext *context, const char *market, mpd_t *last)
 
     return 0;
 }
-static int flush_update(redisContext *context, struct market_info *info)
+static int flush_update(redisContext *context, struct market_info *info, time_t *last_done_time)
 {
     dict_iterator *iter = dict_get_iterator(info->update);
     dict_entry *entry;
@@ -703,6 +727,8 @@ static int flush_update(redisContext *context, struct market_info *info)
         if (ret < 0) {
             log_fatal("flush_kline fail: %d, type: %d, timestamp: %ld", ret, key->kline_type, key->timestamp);
         }
+        if (key->timestamp > *last_done_time)
+            *last_done_time = key->timestamp;
         dict_delete(info->update, entry->key);
     }
     dict_release_iterator(iter);
@@ -717,13 +743,14 @@ static int flush_market(void)
         return -__LINE__;
 
     int ret;
+    time_t last_done_time = 0;
     dict_iterator *iter = dict_get_iterator(dict_market);
     dict_entry *entry;
     while ((entry = dict_next(iter)) != NULL) {
         struct market_info *info = entry->val;
         if (info->update_time < last_flush)
             continue;
-        ret = flush_update(context, info);
+        ret = flush_update(context, info, &last_done_time);
         if (ret < 0) {
             redisFree(context);
             dict_release_iterator(iter);
@@ -745,6 +772,12 @@ static int flush_market(void)
         }
     }
     dict_release_iterator(iter);
+
+    ret = flush_last_done(context, last_done_time);
+    if (ret < 0) {
+        redisFree(context);
+        return -__LINE__;
+    }
 
     ret = flush_offset(context, last_offset);
     if (ret < 0) {
@@ -779,7 +812,7 @@ static void clear_kline(void)
     while ((entry = dict_next(iter)) != NULL) {
         struct market_info *info = entry->val;
         clear_dict(info->sec, now - settings.sec_max);
-        clear_dict(info->min, now / 60 * 60 - settings.min_max * 60);
+        clear_dict(info->sec, now / 60 * 60 - settings.min_max * 60);
         clear_dict(info->hour, now / 3600 * 3600 - settings.hour_max * 3600);
     }
     dict_release_iterator(iter);
@@ -879,25 +912,10 @@ int init_message(void)
     redis = redis_sentinel_create(&settings.redis);
     if (redis == NULL)
         return -__LINE__;
-
-	{
-		int max_tries = 10;
-        for (int i = 0; i < max_tries; i++) {
-            ret = init_market();
-            if (ret >= 0) {
-                break;
-            }
-
-            fprintf(stderr, "init_market fail %d\n", ret);
-
-            if (i == max_tries - 1) {
-    			return ret;
-            }
-
-            sleep(3);
-        }
-	}
-
+    ret = init_market();
+    if (ret < 0) {
+        return ret;
+    }
     last_offset = get_message_offset();
     if (last_offset < 0) {
         return -__LINE__;

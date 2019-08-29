@@ -8,6 +8,8 @@
 
 # include "rh_config.h"
 
+json_t *get_user_balance_history_count(MYSQL *conn, uint32_t user_id,
+        const char *asset, const char *business, uint64_t start_time, uint64_t end_time);
 json_t *get_user_balance_history(MYSQL *conn, uint32_t user_id,
         const char *asset, const char *business, uint64_t start_time, uint64_t end_time, size_t offset, size_t limit);
 json_t *get_user_order_finished(MYSQL *conn, uint32_t user_id,

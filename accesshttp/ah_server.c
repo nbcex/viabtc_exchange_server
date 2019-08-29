@@ -263,6 +263,12 @@ static int init_methods_handler(void)
 
     ERR_RET_LN(add_handler("balance.query", matchengine, CMD_BALANCE_QUERY));
     ERR_RET_LN(add_handler("balance.update", matchengine, CMD_BALANCE_UPDATE));
+    ERR_RET_LN(add_handler("balance.transfer", matchengine, CMD_BALANCE_TRANSFER));
+    ERR_RET_LN(add_handler("balance.moving", matchengine, CMD_BALANCE_MOVING));
+    ERR_RET_LN(add_handler("balance.exchange", matchengine, CMD_BALANCE_EXCHANGE));
+    ERR_RET_LN(add_handler("balance.freeze", matchengine, CMD_BALANCE_FREEZE));
+    ERR_RET_LN(add_handler("balance.unfreeze", matchengine, CMD_BALANCE_UNFREEZE));
+    ERR_RET_LN(add_handler("balance.cash", matchengine, CMD_BALANCE_CASH));
     ERR_RET_LN(add_handler("balance.history", readhistory, CMD_BALANCE_HISTORY));
 
     ERR_RET_LN(add_handler("order.put_limit", matchengine, CMD_ORDER_PUT_LIMIT));
