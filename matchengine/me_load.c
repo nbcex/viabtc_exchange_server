@@ -113,6 +113,270 @@ int load_balance(MYSQL *conn, const char *table)
     return 0;
 }
 
+static int load_freeze_balance(json_t *params, bool is_freeze)
+{
+    if (json_array_size(params) != 5)
+        return -__LINE__;
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return -__LINE__;
+    uint32_t user_id = json_integer_value(json_array_get(params, 0));
+
+    // asset exists
+    if (!json_is_string(json_array_get(params, 1)))
+        return -__LINE__;
+    const char *asset = json_string_value(json_array_get(params, 1));
+    int prec = asset_prec_show(asset);
+    if (prec < 0)
+        return -__LINE__;
+
+    // amount > 0
+    if (!json_is_string(json_array_get(params, 2)))
+        return -__LINE__;
+
+    mpd_t *amount = decimal(json_string_value(json_array_get(params, 2)), prec);
+    if (amount == NULL || mpd_cmp(amount, mpd_zero, &mpd_ctx) <= 0) // 是否为正数
+        goto error;
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 3)))
+        goto error;
+    uint64_t business_id = json_integer_value(json_array_get(params, 3));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 4);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = freeze_user_balance(false, user_id, asset, amount, business_id, detail, is_freeze);
+    mpd_del(amount);
+    if (ret < 0)
+        return -__LINE__;
+
+    return 0;
+
+error:
+    if (amount) {
+        mpd_del(amount);
+    }
+    return -__LINE__;
+}
+
+// transfer user1ID user2ID asset business businessID amount detail
+static int load_transfer_balance(json_t *params)
+{
+    if (json_array_size(params) != 7)
+        return -__LINE__;
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return -__LINE__;
+    uint32_t user_id1 = json_integer_value(json_array_get(params, 0));
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 1)))
+        return -__LINE__;
+    uint32_t user_id2 = json_integer_value(json_array_get(params, 1));
+
+    if (user_id1 == user_id2)
+        return -__LINE__;
+
+    // asset exists
+    if (!json_is_string(json_array_get(params, 2)))
+        return -__LINE__;
+    const char *asset = json_string_value(json_array_get(params, 2));
+    int prec = asset_prec_show(asset);
+    if (prec < 0)
+        return -__LINE__;
+
+	// business
+	if (!json_is_string(json_array_get(params, 3)))
+		return -__LINE__;
+	const char *business = json_string_value(json_array_get(params, 3));
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 4)))
+        return -__LINE__;
+    uint64_t business_id = json_integer_value(json_array_get(params, 4));
+
+    // amount > 0
+    if (!json_is_string(json_array_get(params, 5)))
+        return -__LINE__;
+    mpd_t *amount = decimal(json_string_value(json_array_get(params, 5)), prec);    // need free
+    if (amount == NULL || mpd_cmp(amount, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // detail
+    json_t *detail = json_array_get(params, 6);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = transfer_user_balance(false, user_id1, user_id2, asset, business, business_id, amount, detail);
+    mpd_del(amount);    // free
+    if (ret < 0)
+        return -__LINE__;
+
+    return 0;
+error:
+    if (amount)
+        free(amount);
+    return -__LINE__;
+}
+
+
+// exchange 0:user1ID 1:user2ID 2:asset1 3:amount1 4:asset2 5:amount2 6:businessID 7:detail
+static int load_exchange_balance(json_t *params)
+{
+    if (json_array_size(params) != 8)
+        return -__LINE__;
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return -__LINE__;
+    uint32_t user_id1 = json_integer_value(json_array_get(params, 0));
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 1)))
+        return -__LINE__;
+    uint32_t user_id2 = json_integer_value(json_array_get(params, 1));
+
+    if (user_id1 == user_id2)
+        return -__LINE__;
+
+    // asset1 exists
+    if (!json_is_string(json_array_get(params, 2)))
+        return -__LINE__;
+    const char *fromAsset = json_string_value(json_array_get(params, 2));
+    int prec = asset_prec_show(fromAsset);
+    if (prec < 0)
+        return -__LINE__;
+
+    mpd_t *amount1 = NULL;
+    mpd_t *amount2 = NULL;
+
+    // amount1 > 0
+    if (!json_is_string(json_array_get(params, 3)))
+        return -__LINE__;
+    amount1 = decimal(json_string_value(json_array_get(params, 3)), prec);
+    if (amount1 == NULL || mpd_cmp(amount1, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // asset2 exists
+    if (!json_is_string(json_array_get(params, 4)))
+        goto error;
+    const char *toAsset = json_string_value(json_array_get(params, 4));
+    prec = asset_prec_show(toAsset);
+    if (prec < 0)
+        goto error;
+
+    // amount2 > 0
+    if (!json_is_string(json_array_get(params, 5)))
+        goto error;
+    amount2 = decimal(json_string_value(json_array_get(params, 5)), prec);
+    if (amount2 == NULL || mpd_cmp(amount2, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 6)))
+        goto error;
+    uint64_t business_id = json_integer_value(json_array_get(params, 6));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 7);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = exchange_user_balance(false, user_id1, user_id2, fromAsset, amount1, toAsset, amount2,  business_id, detail);
+
+    mpd_del(amount1);
+    mpd_del(amount2);
+
+    if (ret < 0)
+        return -__LINE__;
+
+    return 0;
+error:
+    if (amount1)
+        mpd_del(amount1);
+    if (amount2)
+        mpd_del(amount2);
+
+    return -__LINE__;
+}
+
+// cash 0:user1ID 1:asset1 2:amount1 3:asset2 4:amount2 5:businessID 6:detail
+static int load_cash_balance(json_t *params)
+{
+    if (json_array_size(params) != 7)
+        return -__LINE__;
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return -__LINE__;
+    uint32_t user_id1 = json_integer_value(json_array_get(params, 0));
+
+    // asset1 exists
+    if (!json_is_string(json_array_get(params, 1)))
+        return -__LINE__;
+    const char *fromAsset = json_string_value(json_array_get(params, 1));
+    int prec = asset_prec_show(fromAsset);
+    if (prec < 0)
+        return -__LINE__;
+
+    mpd_t *amount1 = NULL;
+    mpd_t *amount2 = NULL;
+
+    // amount1 > 0
+    if (!json_is_string(json_array_get(params, 2)))
+        return -__LINE__;
+    amount1 = decimal(json_string_value(json_array_get(params, 2)), prec);
+    if (amount1 == NULL || mpd_cmp(amount1, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // asset2 exists
+    if (!json_is_string(json_array_get(params, 3)))
+        goto error;
+    const char *toAsset = json_string_value(json_array_get(params, 3));
+    prec = asset_prec_show(toAsset);
+    if (prec < 0)
+        goto error;
+
+    // amount2 > 0
+    if (!json_is_string(json_array_get(params, 4)))
+        goto error;
+    amount2 = decimal(json_string_value(json_array_get(params, 4)), prec);
+    if (amount2 == NULL || mpd_cmp(amount2, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 5)))
+        goto error;
+    uint64_t business_id = json_integer_value(json_array_get(params, 5));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 6);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = cash_user_balance(false, user_id1, fromAsset, amount1, toAsset, amount2,  business_id, detail);
+
+    mpd_del(amount1);
+    mpd_del(amount2);
+
+    if (ret < 0)
+        return -__LINE__;
+
+    return 0;
+error:
+    if (amount1)
+        mpd_del(amount1);
+    if (amount2)
+        mpd_del(amount2);
+
+    return -__LINE__;
+}
+
 static int load_update_balance(json_t *params)
 {
     if (json_array_size(params) != 6)
@@ -384,6 +648,16 @@ static int load_oper(json_t *detail)
         ret = load_market_order(params);
     } else if (strcmp(method, "cancel_order") == 0) {
         ret = load_cancel_order(params);
+    } else if (strcmp(method, "transfer_balance") == 0) {
+        ret = load_transfer_balance(params);
+    } else if (strcmp(method, "exchange_balance") == 0) {
+        ret = load_exchange_balance(params);
+    } else if (strcmp(method, "cash_balance") == 0) {
+        ret = load_cash_balance(params);
+    } else if (strcmp(method, "freeze_balance") == 0) {
+        load_freeze_balance(params, true);
+    } else if (strcmp(method, "unfreeze_balance") == 0) {
+        load_freeze_balance(params, false);
     } else {
         return -__LINE__;
     }

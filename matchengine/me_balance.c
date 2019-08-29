@@ -14,6 +14,11 @@ struct asset_type {
     int prec_show;
 };
 
+
+#define BAlANCE_PART_available "available"
+#define BAlANCE_PART_freeze "freeze"
+#define BAlANCE_PART_mfreeze "m_freeze"
+
 static uint32_t asset_dict_hash_function(const void *key)
 {
     return dict_generic_hash_function(key, strlen(key));
@@ -154,6 +159,17 @@ int asset_prec_show(const char *asset)
     return at ? at->prec_show: -1;
 }
 
+int balance_part(const char *part)
+{
+    if(strcmp(part, BAlANCE_PART_available) == 0) {
+		return BALANCE_TYPE_AVAILABLE;
+	} else if (strcmp(part, BAlANCE_PART_mfreeze) == 0) {
+		return BALANCE_TYPE_MANUAL_FREEZE;
+	}
+	return -1;
+}
+
+
 mpd_t *balance_get(uint32_t user_id, uint32_t type, const char *asset)
 {
     struct balance_key key;
@@ -266,6 +282,32 @@ mpd_t *balance_sub(uint32_t user_id, uint32_t type, const char *asset, mpd_t *am
     return result;
 }
 
+mpd_t *balance_manual_freeze(uint32_t user_id, const char *asset, mpd_t *amount)
+{
+    struct asset_type *at = get_asset_type(asset);
+    if (at == NULL)
+        return NULL;
+
+    if (mpd_cmp(amount, mpd_zero, &mpd_ctx) < 0)
+        return NULL;
+    mpd_t *available = balance_get(user_id, BALANCE_TYPE_AVAILABLE, asset);
+    if (available == NULL)
+        return NULL;
+    if (mpd_cmp(available, amount, &mpd_ctx) < 0)
+        return NULL;
+
+    if (balance_add(user_id, BALANCE_TYPE_MANUAL_FREEZE, asset, amount) == 0)
+        return NULL;
+    mpd_sub(available, available, amount, &mpd_ctx);
+    if (mpd_cmp(available, mpd_zero, &mpd_ctx) == 0) {
+        balance_del(user_id, BALANCE_TYPE_AVAILABLE, asset);
+        return mpd_zero;
+    }
+    mpd_rescale(available, available, -at->prec_save, &mpd_ctx);
+
+    return available;
+}
+
 mpd_t *balance_freeze(uint32_t user_id, const char *asset, mpd_t *amount)
 {
     struct asset_type *at = get_asset_type(asset);
@@ -290,6 +332,32 @@ mpd_t *balance_freeze(uint32_t user_id, const char *asset, mpd_t *amount)
     mpd_rescale(available, available, -at->prec_save, &mpd_ctx);
 
     return available;
+}
+
+mpd_t *balance_manual_unfreeze(uint32_t user_id, const char *asset, mpd_t *amount)
+{
+    struct asset_type *at = get_asset_type(asset);
+    if (at == NULL)
+        return NULL;
+
+    if (mpd_cmp(amount, mpd_zero, &mpd_ctx) < 0)
+        return NULL;
+    mpd_t *freeze = balance_get(user_id, BALANCE_TYPE_MANUAL_FREEZE, asset);
+    if (freeze == NULL)
+        return NULL;
+    if (mpd_cmp(freeze, amount, &mpd_ctx) < 0)
+        return NULL;
+
+    if (balance_add(user_id, BALANCE_TYPE_AVAILABLE, asset, amount) == 0)
+        return NULL;
+    mpd_sub(freeze, freeze, amount, &mpd_ctx);
+    if (mpd_cmp(freeze, mpd_zero, &mpd_ctx) == 0) {
+        balance_del(user_id, BALANCE_TYPE_MANUAL_FREEZE, asset);
+        return mpd_zero;
+    }
+    mpd_rescale(freeze, freeze, -at->prec_save, &mpd_ctx);
+
+    return freeze;
 }
 
 mpd_t *balance_unfreeze(uint32_t user_id, const char *asset, mpd_t *amount)
@@ -330,16 +398,21 @@ mpd_t *balance_total(uint32_t user_id, const char *asset)
     if (freeze) {
         mpd_add(balance, balance, freeze, &mpd_ctx);
     }
+    mpd_t *manual_freeze = balance_get(user_id, BALANCE_TYPE_MANUAL_FREEZE, asset);
+    if (manual_freeze) {
+        mpd_add(balance, balance, manual_freeze, &mpd_ctx);
+    }
 
     return balance;
 }
 
-int balance_status(const char *asset, mpd_t *total, size_t *available_count, mpd_t *available, size_t *freeze_count, mpd_t *freeze)
+int balance_status(const char *asset, mpd_t *total, size_t *available_count, mpd_t *available, size_t *freeze_count, mpd_t *freeze, size_t *manual_freeze_count, mpd_t *manual_freeze)
 {
     *freeze_count = 0;
     *available_count = 0;
     mpd_copy(total, mpd_zero, &mpd_ctx);
     mpd_copy(freeze, mpd_zero, &mpd_ctx);
+    mpd_copy(manual_freeze, mpd_zero, &mpd_ctx);
     mpd_copy(available, mpd_zero, &mpd_ctx);
 
     dict_entry *entry;
@@ -352,6 +425,9 @@ int balance_status(const char *asset, mpd_t *total, size_t *available_count, mpd
         if (key->type == BALANCE_TYPE_AVAILABLE) {
             *available_count += 1;
             mpd_add(available, available, entry->val, &mpd_ctx);
+        } else if (key->type == BALANCE_TYPE_MANUAL_FREEZE) {
+            *manual_freeze_count += 1;
+            mpd_add(manual_freeze, manual_freeze, entry->val, &mpd_ctx);
         } else {
             *freeze_count += 1;
             mpd_add(freeze, freeze, entry->val, &mpd_ctx);

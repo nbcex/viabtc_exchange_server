@@ -428,10 +428,13 @@ static int on_method_state_subscribe(nw_ses *ses, uint64_t id, struct clt_info *
     }
 
     send_success(ses, id);
+    json_t *record = json_object();
     for (size_t i = 0; i < params_size; ++i) {
-        state_send_last(ses, json_string_value(json_array_get(params, i)));
+        mpd_t *res =  state_send_last(ses, json_string_value(json_array_get(params, i)));
+	    json_object_set(record, json_string_value(json_array_get(params, i)), res);
     }
-
+    send_notify(ses, "state.update", record);
+    json_decref(record);
     return 0;
 }
 

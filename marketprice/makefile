@@ -1,4 +1,4 @@
 TARGET  := marketprice.exe
-INCS = -I ../network -I ../utils -I ../depends/librdkafka/src -I ../depends/curl/include
-LIBS = -L ../utils -lutils -L ../network -lnetwork -Wl,-Bstatic -lev -ljansson -lmpdec -lz -llz4 -lssl -lcrypto -lhiredis -Wl,-Bdynamic -lm -lpthread -ldl -lstdc++ -L ../build/lib -lcurl -lrdkafka 
+INCS = -I ../network -I ../utils
+LIBS = -L ../utils -lutils -L ../network -lnetwork -Wl,-Bstatic -lev -ljansson -lmpdec -lrdkafka -lz -llz4 -lssl -lcrypto -lhiredis -lcurl -Wl,-Bdynamic -lm -lpthread -ldl -lstdc++ -lsasl2 -fno-pie -no-pie
 include ../makefile.inc

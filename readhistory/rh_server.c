@@ -117,15 +117,22 @@ static int on_cmd_balance_history(MYSQL *conn, json_t *params, struct job_reply 
     if (limit == 0 || limit > QUERY_LIMIT)
         goto invalid_argument;
 
+	uint32_t record_count = 0;
     json_t *records = get_user_balance_history(conn, user_id, asset, business, start_time, end_time, offset, limit);
     if (records == NULL) {
         rsp->code = 2;
         rsp->message = sdsnew("internal error");
-    }
+    } else {
+		json_t *count_obj = get_user_balance_history_count(conn, user_id, asset, business, start_time, end_time); //TODO TODO
+		if (count_obj != NULL) {
+			record_count = json_integer_value(json_object_get(count_obj, "count"));
+		}
+	}
 
     json_t *result = json_object();
     json_object_set_new(result, "offset", json_integer(offset));
     json_object_set_new(result, "limit", json_integer(limit));
+	json_object_set_new(result, "count", json_integer(record_count));
     json_object_set_new(result, "records", records);
     rsp->result = result;
 
@@ -262,13 +269,13 @@ static int on_cmd_market_deals(MYSQL *conn, json_t *params, struct job_reply *rs
         rsp->code = 2;
         rsp->message = sdsnew("internal error");
     }
-
+	
 	uint32_t count = get_market_user_deals_count(conn, user_id, market);
 
     json_t *result = json_object();
     json_object_set_new(result, "offset", json_integer(offset));
     json_object_set_new(result, "limit", json_integer(limit));
-    json_object_set_new(result, "total", json_integer(count));
+	json_object_set_new(result, "total", json_integer(count));
     json_object_set_new(result, "records", records);
     rsp->result = result;
 

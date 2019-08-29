@@ -307,7 +307,6 @@ static int flush_log(dlog_t *log, struct timeval *now)
         }
         n = write_in_full(fd, log->buf, log->write_len);
         close(fd);
-        write_in_full(fileno(stdout), log->buf, log->write_len);
         if (n < 0) {
             ret_val = -1;
             goto end_lable;

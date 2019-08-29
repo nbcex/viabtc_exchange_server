@@ -1,5 +1,6 @@
 {
     "debug": true,
+    "daemon": false,
     "process": {
         "file_limit": 1000000,
         "core_limit": 1000000000
@@ -11,7 +12,7 @@
     },
     "alert": {
         "host": "marketprice",
-        "addr": "127.0.0.1:4444"
+        "addr": "alertcenter:4444"
     },
     "svr": {
         "bind": [
@@ -23,17 +24,15 @@
         "heartbeat_check": false
     },
     "deals": {
-        "brokers": "127.0.0.1:9092",
+        "brokers": "kafka:9092",
         "topic": "deals",
         "partition": 0
     },
     "redis": {
         "name": "mymaster",
         "addr": [
-            "127.0.0.1:26381",
-            "127.0.0.1:26382",
-            "127.0.0.1:26383"
+            "redis-sentinel:26379"
         ]
     },
-    "accesshttp": "http://127.0.0.1:8080"
+    "accesshttp": "http://accesshttp:8080"
 }

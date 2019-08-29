@@ -183,6 +183,20 @@ static int on_cmd_balance_query(nw_ses *ses, rpc_pkg *pkg, json_t *params)
                 json_object_set_new(unit, "freeze", json_string("0"));
             }
 
+            mpd_t *manual_freeze = balance_get(user_id, BALANCE_TYPE_MANUAL_FREEZE, asset);
+            if (manual_freeze) {
+                if (prec_save != prec_show) {
+                    mpd_t *show = mpd_qncopy(manual_freeze);
+                    mpd_rescale(show, show, -prec_show, &mpd_ctx);
+                    json_object_set_new_mpd(unit, "m_freeze", show);
+                    mpd_del(show);
+                } else {
+                    json_object_set_new_mpd(unit, "m_freeze", manual_freeze);
+                }
+            } else {
+                json_object_set_new(unit, "m_freeze", json_string("0"));
+            }
+
             json_object_set_new(result, asset, unit);
         }
     } else {
@@ -224,6 +238,20 @@ static int on_cmd_balance_query(nw_ses *ses, rpc_pkg *pkg, json_t *params)
                 json_object_set_new(unit, "freeze", json_string("0"));
             }
 
+            mpd_t *m_freeze = balance_get(user_id, BALANCE_TYPE_MANUAL_FREEZE, asset);
+            if (m_freeze) {
+                if (prec_save != prec_show) {
+                    mpd_t *show = mpd_qncopy(m_freeze);
+                    mpd_rescale(show, show, -prec_show, &mpd_ctx);
+                    json_object_set_new_mpd(unit, "m_freeze", show);
+                    mpd_del(show);
+                } else {
+                    json_object_set_new_mpd(unit, "m_freeze", m_freeze);
+                }
+            } else {
+                json_object_set_new(unit, "m_freeze", json_string("0"));
+            }
+
             json_object_set_new(result, asset, unit);
         }
     }
@@ -231,6 +259,380 @@ static int on_cmd_balance_query(nw_ses *ses, rpc_pkg *pkg, json_t *params)
     int ret = reply_result(ses, pkg, result);
     json_decref(result);
     return ret;
+}
+
+// freeze|unfreeze 0:userID 1:asset 2:amount 3:businessID 4:detail
+static int on_cmd_balance_freeze(nw_ses *ses, rpc_pkg *pkg, json_t *params, bool is_freeze) {
+    if (json_array_size(params) != 5)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t user_id = json_integer_value(json_array_get(params, 0));
+
+    // asset exists
+    if (!json_is_string(json_array_get(params, 1)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *asset = json_string_value(json_array_get(params, 1));
+    int prec = asset_prec_show(asset);
+    if (prec < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // amount > 0
+    if (!json_is_string(json_array_get(params, 2)))
+        return reply_error_invalid_argument(ses, pkg);
+
+    mpd_t *amount = decimal(json_string_value(json_array_get(params, 2)), prec);
+    if (amount == NULL || mpd_cmp(amount, mpd_zero, &mpd_ctx) <= 0) // 是否为正数
+        goto error;
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 3)))
+        goto error;
+    uint64_t business_id = json_integer_value(json_array_get(params, 3));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 4);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = freeze_user_balance(true, user_id, asset, amount, business_id, detail, is_freeze);
+    mpd_del(amount);
+    if (ret == -1) {
+        return reply_error(ses, pkg, 10, is_freeze ? "repeat freeze" : "repeat unfreeze");
+    } else if (ret == -2) {
+        return reply_error(ses, pkg, 11, "balance not enough");
+    } else if (ret < 0) {
+        return reply_error_internal_error(ses, pkg);
+    }
+
+    append_operlog(is_freeze ? "freeze_balance" : "unfreeze_balance", params);
+    return reply_success(ses, pkg);
+error:
+    if (amount) {
+        mpd_del(amount);
+    }
+    return reply_error_invalid_argument(ses, pkg);
+}
+
+//moving: srcuid dstuid srcpart dstpart asset amount business businessid detail
+static int on_cmd_balance_moving(nw_ses *ses, rpc_pkg *pkg, json_t *params)
+{
+    if (json_array_size(params) != 9) {
+        return reply_error_invalid_argument(ses, pkg);
+    }
+
+    // srcuid is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t srcuid = json_integer_value(json_array_get(params, 0));
+
+    // dstuid is integer
+    if (!json_is_integer(json_array_get(params, 1)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t dstuid = json_integer_value(json_array_get(params, 1));
+
+    // srcpart exists
+    if (!json_is_string(json_array_get(params, 2)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *srcpart = json_string_value(json_array_get(params, 2));
+	int src_part_id = balance_part(srcpart);
+    if ( src_part_id < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // dstpart exists
+    if (!json_is_string(json_array_get(params, 3)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *dstpart = json_string_value(json_array_get(params, 3));
+	int dst_part_id = balance_part(dstpart);
+    if (dst_part_id < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+    if ((srcuid == dstuid)&&(strcmp(srcpart, dstpart)== 0))
+        return reply_error_invalid_argument(ses, pkg);
+
+    // asset exists
+    if (!json_is_string(json_array_get(params, 4)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *asset = json_string_value(json_array_get(params, 4));
+    int prec = asset_prec_show(asset);
+    if (prec < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // amount > 0
+    if (!json_is_string(json_array_get(params, 5)))
+        return reply_error_invalid_argument(ses, pkg);
+    mpd_t *amount = decimal(json_string_value(json_array_get(params, 5)), prec);
+    if (amount == NULL || mpd_cmp(amount, mpd_zero, &mpd_ctx) <= 0) // 是否为正数
+        goto error;
+
+	// business exists
+    if (!json_is_string(json_array_get(params, 6)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *business = json_string_value(json_array_get(params, 6));
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 7)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint64_t business_id = json_integer_value(json_array_get(params, 7));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 8);
+    if (!json_is_object(detail))
+        goto error;
+
+	int ret = moving_user_balance(true, srcuid, dstuid,
+		(uint32_t)src_part_id, (uint32_t)dst_part_id,
+		asset, amount, business, business_id, detail);
+    mpd_del(amount);
+    if (ret == -1) {
+        return reply_error(ses, pkg, 10, "repeat moving");
+    } else if (ret == -3) {
+		return reply_error(ses, pkg, 11, "balance not enough");
+    } else if (ret < 0) {
+        return reply_error_internal_error(ses, pkg);
+    }
+
+    append_operlog("moving_balance", params);
+    return reply_success(ses, pkg);
+error:
+    if (amount)
+        mpd_del(amount);
+    return reply_error_invalid_argument(ses, pkg);
+}
+
+
+// transfer user1ID user2ID asset business businessID amount detail
+static int on_cmd_balance_transfer(nw_ses *ses, rpc_pkg *pkg, json_t *params)
+{
+    if (json_array_size(params) != 7) {
+        return reply_error_invalid_argument(ses, pkg);
+    }
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t user_id1 = json_integer_value(json_array_get(params, 0));
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 1)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t user_id2 = json_integer_value(json_array_get(params, 1));
+
+    if (user_id1 == user_id2)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // asset exists
+    if (!json_is_string(json_array_get(params, 2)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *asset = json_string_value(json_array_get(params, 2));
+    int prec = asset_prec_show(asset);
+    if (prec < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+	// business exists
+    if (!json_is_string(json_array_get(params, 3)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *business = json_string_value(json_array_get(params, 3));
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 4)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint64_t business_id = json_integer_value(json_array_get(params, 4));
+
+    // amount > 0
+    if (!json_is_string(json_array_get(params, 5)))
+        return reply_error_invalid_argument(ses, pkg);
+    mpd_t *amount = decimal(json_string_value(json_array_get(params, 5)), prec);
+    if (amount == NULL || mpd_cmp(amount, mpd_zero, &mpd_ctx) <= 0) // 是否为正数
+        goto error;
+
+    // detail is object
+    json_t *detail = json_array_get(params, 6);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = transfer_user_balance(true, user_id1, user_id2, asset, business, business_id, amount, detail);
+    mpd_del(amount);
+    if (ret == -1) {
+        return reply_error(ses, pkg, 10, "repeat transfer");
+    } else if (ret == -2) {
+        return reply_error(ses, pkg, 11, "balance not enough");
+    } else if (ret < 0) {
+        return reply_error_internal_error(ses, pkg);
+    }
+
+    append_operlog("transfer_balance", params);
+    return reply_success(ses, pkg);
+error:
+    if (amount)
+        mpd_del(amount);
+    return reply_error_invalid_argument(ses, pkg);
+}
+
+// exchange 0:user1ID 1:user2ID 2:asset1 3:amount1 4:asset2 5:amount2 6:businessID 7:detail
+static int on_cmd_balance_exchange(nw_ses *ses, rpc_pkg *pkg, json_t *params)
+{
+    if (json_array_size(params) != 8)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t user_id1 = json_integer_value(json_array_get(params, 0));
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 1)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t user_id2 = json_integer_value(json_array_get(params, 1));
+
+    if (user_id1 == user_id2)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // asset1 exists
+    if (!json_is_string(json_array_get(params, 2)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *fromAsset = json_string_value(json_array_get(params, 2));
+    int prec = asset_prec_show(fromAsset);
+    if (prec < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+    mpd_t *amount1 = NULL;
+    mpd_t *amount2 = NULL;
+
+    // amount1 > 0
+    if (!json_is_string(json_array_get(params, 3)))
+        return reply_error_invalid_argument(ses, pkg);
+    amount1 = decimal(json_string_value(json_array_get(params, 3)), prec);
+    if (amount1 == NULL || mpd_cmp(amount1, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // asset2 exists
+    if (!json_is_string(json_array_get(params, 4)))
+        goto error;
+    const char *toAsset = json_string_value(json_array_get(params, 4));
+    prec = asset_prec_show(toAsset);
+    if (prec < 0)
+        goto error;
+
+    // amount2 > 0
+    if (!json_is_string(json_array_get(params, 5)))
+        goto error;
+    amount2 = decimal(json_string_value(json_array_get(params, 5)), prec);
+    if (amount2 == NULL || mpd_cmp(amount2, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 6)))
+        goto error;
+    uint64_t business_id = json_integer_value(json_array_get(params, 6));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 7);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = exchange_user_balance(true, user_id1, user_id2, fromAsset, amount1, toAsset, amount2,  business_id, detail);
+
+    mpd_del(amount1);
+    mpd_del(amount2);
+
+    if (ret == -1) {
+        return reply_error(ses, pkg, 10, "repeat exchange");
+    } else if (ret == -2) {
+        return reply_error(ses, pkg, 11, "balance not enough");
+    } else if (ret < 0) {
+        return reply_error_internal_error(ses, pkg);
+    }
+
+    append_operlog("exchange_balance", params);
+    return reply_success(ses, pkg);
+error:
+    if (amount1)
+        mpd_del(amount1);
+    if (amount2)
+        mpd_del(amount2);
+
+    return reply_error_invalid_argument(ses, pkg);
+}
+
+// cash 0:user1ID 1:asset1 2:amount1 3:asset2 4:amount2 5:businessID 6:detail
+static int on_cmd_balance_cash(nw_ses *ses, rpc_pkg *pkg, json_t *params)
+{
+    if (json_array_size(params) != 7)
+        return reply_error_invalid_argument(ses, pkg);
+
+    // user_id is integer
+    if (!json_is_integer(json_array_get(params, 0)))
+        return reply_error_invalid_argument(ses, pkg);
+    uint32_t user_id1 = json_integer_value(json_array_get(params, 0));
+
+    // asset1 exists
+    if (!json_is_string(json_array_get(params, 1)))
+        return reply_error_invalid_argument(ses, pkg);
+    const char *fromAsset = json_string_value(json_array_get(params, 1));
+    int prec = asset_prec_show(fromAsset);
+    if (prec < 0)
+        return reply_error_invalid_argument(ses, pkg);
+
+    mpd_t *amount1 = NULL;
+    mpd_t *amount2 = NULL;
+
+    // amount1 > 0
+    if (!json_is_string(json_array_get(params, 2)))
+        return reply_error_invalid_argument(ses, pkg);
+    amount1 = decimal(json_string_value(json_array_get(params, 2)), prec);
+    if (amount1 == NULL || mpd_cmp(amount1, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // asset2 exists
+    if (!json_is_string(json_array_get(params, 3)))
+        goto error;
+    const char *toAsset = json_string_value(json_array_get(params, 3));
+    prec = asset_prec_show(toAsset);
+    if (prec < 0)
+        goto error;
+
+    // amount2 > 0
+    if (!json_is_string(json_array_get(params, 4)))
+        goto error;
+    amount2 = decimal(json_string_value(json_array_get(params, 4)), prec);
+    if (amount2 == NULL || mpd_cmp(amount2, mpd_zero, &mpd_ctx) <= 0)
+        goto error;
+
+    // business_id is integer
+    if (!json_is_integer(json_array_get(params, 5)))
+        goto error;
+    uint64_t business_id = json_integer_value(json_array_get(params, 5));
+
+    // detail is object
+    json_t *detail = json_array_get(params, 6);
+    if (!json_is_object(detail))
+        goto error;
+
+    int ret = cash_user_balance(true, user_id1, fromAsset, amount1, toAsset, amount2,  business_id, detail);
+
+    mpd_del(amount1);
+    mpd_del(amount2);
+
+    if (ret == -1) {
+        return reply_error(ses, pkg, 10, "repeat cash");
+    } else if (ret == -2) {
+        return reply_error(ses, pkg, 11, "balance not enough");
+    } else if (ret < 0) {
+        return reply_error_internal_error(ses, pkg);
+    }
+
+    append_operlog("cash_balance", params);//todo
+    return reply_success(ses, pkg);
+error:
+    if (amount1)
+        mpd_del(amount1);
+    if (amount2)
+        mpd_del(amount2);
+
+    return reply_error_invalid_argument(ses, pkg);
 }
 
 static int on_cmd_balance_update(nw_ses *ses, rpc_pkg *pkg, json_t *params)
@@ -308,10 +710,12 @@ static json_t *get_asset_summary(const char *name)
 {
     size_t available_count;
     size_t freeze_count;
+    size_t m_freeze_count;
     mpd_t *total = mpd_new(&mpd_ctx);
     mpd_t *available = mpd_new(&mpd_ctx);
     mpd_t *freeze = mpd_new(&mpd_ctx);
-    balance_status(name, total, &available_count, available, &freeze_count, freeze);
+    mpd_t *m_freeze = mpd_new(&mpd_ctx);
+    balance_status(name, total, &available_count, available, &freeze_count, freeze, &m_freeze_count, m_freeze);
 
     json_t *obj = json_object();
     json_object_set_new(obj, "name", json_string(name));
@@ -320,10 +724,13 @@ static json_t *get_asset_summary(const char *name)
     json_object_set_new_mpd(obj, "available_balance", available);
     json_object_set_new(obj, "freeze_count", json_integer(freeze_count));
     json_object_set_new_mpd(obj, "freeze_balance", freeze);
+    json_object_set_new(obj, "m_freeze_count", json_integer(m_freeze_count));
+    json_object_set_new_mpd(obj, "m_freeze_balance", m_freeze);
 
     mpd_del(total);
     mpd_del(available);
     mpd_del(freeze);
+    mpd_del(m_freeze);
 
     return obj;
 }
@@ -1034,6 +1441,82 @@ static void svr_on_recv_pkg(nw_ses *ses, rpc_pkg *pkg)
         ret = on_cmd_balance_update(ses, pkg, params);
         if (ret < 0) {
             log_error("on_cmd_balance_update %s fail: %d", params_str, ret);
+        }
+        break;
+    case CMD_BALANCE_FREEZE:
+        if (is_operlog_block() || is_history_block() || is_message_block()) {
+            log_fatal("service unavailable, operlog: %d, history: %d, message: %d", is_operlog_block(), is_history_block(), is_message_block());
+            reply_error_service_unavailable(ses, pkg);
+            goto cleanup;
+        }
+        log_trace("from: %s cmd balance freeze, sequence: %u params: %s", nw_sock_human_addr(&ses->peer_addr), pkg->sequence, params_str);
+        ret = on_cmd_balance_freeze(ses, pkg, params, true);
+        if (ret < 0) {
+            log_error("on_cmd_balance_freeze %s fail: %d", params_str, ret);
+        }
+        break;
+    case CMD_BALANCE_UNFREEZE:
+        if (is_operlog_block() || is_history_block() || is_message_block()) {
+            log_fatal("service unavailable, operlog: %d, history: %d, message: %d", is_operlog_block(), is_history_block(), is_message_block());
+            reply_error_service_unavailable(ses, pkg);
+            goto cleanup;
+        }
+        log_trace("from: %s cmd balance unfreeze, sequence: %u params: %s", nw_sock_human_addr(&ses->peer_addr), pkg->sequence, params_str);
+        ret = on_cmd_balance_freeze(ses, pkg, params, false);
+        if (ret < 0) {
+            log_error("on_cmd_balance_unfreeze %s fail: %d", params_str, ret);
+        }
+        break;
+    case CMD_BALANCE_TRANSFER:
+        if (is_operlog_block() || is_history_block() || is_message_block()) {
+            log_fatal("service unavailable, operlog: %d, history: %d, message: %d", is_operlog_block(), is_history_block(), is_message_block());
+            reply_error_service_unavailable(ses, pkg);
+            goto cleanup;
+        }
+
+        log_trace("from: %s cmd balance transfer, sequence: %u params: %s", nw_sock_human_addr(&ses->peer_addr), pkg->sequence, params_str);
+        ret = on_cmd_balance_transfer(ses, pkg, params);
+        if (ret < 0) {
+            log_error("on_cmd_balance_transfer %s fail: %d", params_str, ret);
+        }
+        break;
+    case CMD_BALANCE_MOVING:
+        if (is_operlog_block() || is_history_block() || is_message_block()) {
+            log_fatal("service unavailable, operlog: %d, history: %d, message: %d", is_operlog_block(), is_history_block(), is_message_block());
+            reply_error_service_unavailable(ses, pkg);
+            goto cleanup;
+        }
+
+        log_trace("from: %s cmd balance moving, sequence: %u params: %s", nw_sock_human_addr(&ses->peer_addr), pkg->sequence, params_str);
+        ret = on_cmd_balance_moving(ses, pkg, params);
+        if (ret < 0) {
+            log_error("on_cmd_balance_moving %s fail: %d", params_str, ret);
+        }
+        break;
+    case CMD_BALANCE_EXCHANGE:
+        if (is_operlog_block() || is_history_block() || is_message_block()) {
+            log_fatal("service unavailable, operlog: %d, history: %d, message: %d", is_operlog_block(), is_history_block(), is_message_block());
+            reply_error_service_unavailable(ses, pkg);
+            goto cleanup;
+        }
+
+        log_trace("from: %s cmd balance exchange, sequence: %u params: %s", nw_sock_human_addr(&ses->peer_addr), pkg->sequence, params_str);
+        ret = on_cmd_balance_exchange(ses, pkg, params);
+        if (ret < 0) {
+            log_error("on_cmd_balance_exchange %s fail: %d", params_str, ret);
+        }
+        break;
+    case CMD_BALANCE_CASH:
+        if (is_operlog_block() || is_history_block() || is_message_block()) {
+            log_fatal("service unavailable, operlog: %d, history: %d, message: %d", is_operlog_block(), is_history_block(), is_message_block());
+            reply_error_service_unavailable(ses, pkg);
+            goto cleanup;
+        }
+
+        log_trace("from: %s cmd balance cash, sequence: %u params: %s", nw_sock_human_addr(&ses->peer_addr), pkg->sequence, params_str);
+        ret = on_cmd_balance_cash(ses, pkg, params);
+        if (ret < 0) {
+            log_error("on_cmd_balance_cash %s fail: %d", params_str, ret);
         }
         break;
     case CMD_ASSET_LIST:
